@@ -1,10 +1,351 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои Заметки</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --warning: #f1c40f;
+            --bg: #f5f7fa;
+            --card-bg: #ffffff;
+            --text: #333;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+        }
+        .card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        h2 {
+            margin-top: 0;
+            color: var(--primary);
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: 15px;
+            transition: border 0.3s;
+        }
+        input:focus, textarea:focus {
+            border-color: var(--primary);
+            outline: none;
+        }
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: bold;
+            color: white;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        button:active { transform: scale(0.98); }
+        button:hover { opacity: 0.9; }
+
+        .btn-primary { background: var(--primary); }
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); }
+        .btn-warning { background: var(--warning); color: #333; }
+        .btn-secondary { background: #95a5a6; }
+
+        .auth-buttons { display: flex; gap: 10px; }
+        .auth-buttons button { flex: 1; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+
+        .note-item {
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .note-item:last-child { border-bottom: none; }
+        .note-content h4 { margin: 0 0 5px 0; font-size: 18px; }
+        .note-content p { margin: 0; color: #666; font-size: 14px; white-space: pre-wrap; }
+        .note-actions { display: flex; gap: 8px; margin-left: 15px; }
+        .note-actions button { padding: 8px 12px; font-size: 14px; }
+
+        .hidden { display: none !important; }
+        #message-box {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-weight: bold;
+            display: none;
+        }
+        .msg-error { background: #fadbd8; color: var(--danger); border: 1px solid #f5b7b1; }
+        .msg-success { background: #d5f5e3; color: var(--success); border: 1px solid #abebc6; }
+    </style>
 </head>
 <body>
-$END$
+
+<div class="container">
+
+    <div id="message-box"></div>
+
+    <!-- БЛОК АВТОРИЗАЦИИ -->
+    <div id="auth-section" class="card">
+        <h2>Вход в систему</h2>
+        <input type="email" id="email" placeholder="Email (например, test@mail.ru)">
+        <input type="password" id="password" placeholder="Пароль (мин. 6 символов)">
+        <div class="auth-buttons">
+            <button class="btn-primary" onclick="login()">Войти</button>
+            <button class="btn-success" onclick="register()">Регистрация</button>
+        </div>
+    </div>
+
+    <!-- БЛОК ЗАМЕТОК -->
+    <div id="notes-section" class="hidden">
+        <div class="header">
+            <h2>Мои заметки</h2>
+            <button class="btn-secondary" onclick="logout()">Выйти</button>
+        </div>
+
+        <!-- Форма добавления/редактирования -->
+        <div class="card">
+            <input type="hidden" id="edit-note-id">
+            <input type="text" id="note-title" placeholder="Заголовок заметки">
+            <textarea id="note-content" placeholder="Текст заметки..." rows="3"></textarea>
+            <div style="display: flex; gap: 10px;">
+                <button id="save-btn" class="btn-primary" onclick="saveNote()">Добавить</button>
+                <button id="cancel-btn" class="btn-secondary hidden" onclick="resetForm()">Отмена</button>
+            </div>
+        </div>
+
+        <!-- Список заметок -->
+        <div id="notes-list" class="card">
+            <!-- Сюда рендерятся заметки -->
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // Базовый URL твоего FastAPI сервера
+    const API_URL = "http://127.0.0.1:8000";
+    let currentNotes = []; // Локальное хранилище заметок
+
+    // Проверка авторизации при загрузке страницы
+    window.onload = () => {
+        if (localStorage.getItem("token")) {
+            showNotes();
+        }
+    };
+
+    // Утилита для показа сообщений
+    function showMessage(text, type = 'error') {
+        const box = document.getElementById('message-box');
+        box.innerText = text;
+        box.className = type === 'error' ? 'msg-error' : 'msg-success';
+        box.style.display = 'block';
+        setTimeout(() => { box.style.display = 'none'; }, 4000);
+    }
+
+    // --- АВТОРИЗАЦИЯ ---
+
+    async function register() {
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+
+        if (!email || !password) return showMessage("Заполните все поля");
+
+        const res = await fetch(`${API_URL}/auth/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password })
+        });
+
+        if (res.ok) {
+            showMessage("Регистрация успешна! Теперь войдите.", "success");
+        } else {
+            const err = await res.json();
+            showMessage(err.detail || "Ошибка регистрации");
+        }
+    }
+
+    async function login() {
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+
+        // OAuth2 требует отправки данных в формате form-urlencoded
+        const formData = new URLSearchParams();
+        formData.append("username", email);
+        formData.append("password", password);
+
+        const res = await fetch(`${API_URL}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: formData
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            localStorage.setItem("token", data.access_token);
+            showNotes();
+        } else {
+            showMessage("Неверный email или пароль");
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem("token");
+        document.getElementById("auth-section").classList.remove("hidden");
+        document.getElementById("notes-section").classList.add("hidden");
+        document.getElementById("email").value = "";
+        document.getElementById("password").value = "";
+    }
+
+    function showNotes() {
+        document.getElementById("auth-section").classList.add("hidden");
+        document.getElementById("notes-section").classList.remove("hidden");
+        loadNotes();
+    }
+
+    // --- РАБОТА С ЗАМЕТКАМИ ---
+
+    async function loadNotes() {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/notes/`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+            currentNotes = await res.json();
+            renderNotes();
+        } else if (res.status === 401) {
+            showMessage("Сессия истекла, войдите заново");
+            logout();
+        }
+    }
+
+    function renderNotes() {
+        const list = document.getElementById("notes-list");
+        list.innerHTML = "";
+
+        if (currentNotes.length === 0) {
+            list.innerHTML = "<p style='text-align:center; color:#999;'>У вас пока нет заметок. Создайте первую!</p>";
+            return;
+        }
+
+        currentNotes.forEach(note => {
+            list.innerHTML += `
+                <div class="note-item">
+                    <div class="note-content">
+                        <h4>${note.title}</h4>
+                        <p>${note.content}</p>
+                    </div>
+                    <div class="note-actions">
+                        <button class="btn-warning" onclick="editNote(${note.id})">✏️</button>
+                        <button class="btn-danger" onclick="deleteNote(${note.id})">✖</button>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    async function saveNote() {
+        const title = document.getElementById("note-title").value;
+        const content = document.getElementById("note-content").value;
+        const editId = document.getElementById("edit-note-id").value;
+        const token = localStorage.getItem("token");
+
+        if (!title || !content) return showMessage("Заполните заголовок и текст");
+
+        let url = `${API_URL}/notes/`;
+        let method = "POST";
+
+        // Если есть ID, значит мы обновляем существующую заметку
+        if (editId) {
+            url = `${API_URL}/notes/${editId}`;
+            method = "PATCH";
+        }
+
+        const res = await fetch(url, {
+            method: method,
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            },
+            body: JSON.stringify({ title, content })
+        });
+
+        if (res.ok) {
+            resetForm();
+            loadNotes();
+            showMessage(editId ? "Заметка обновлена" : "Заметка создана", "success");
+        } else {
+            showMessage("Ошибка при сохранении");
+        }
+    }
+
+    function editNote(id) {
+        const note = currentNotes.find(n => n.id === id);
+        if (!note) return;
+
+        document.getElementById("note-title").value = note.title;
+        document.getElementById("note-content").value = note.content;
+        document.getElementById("edit-note-id").value = note.id;
+
+        document.getElementById("save-btn").innerText = "Сохранить";
+        document.getElementById("save-btn").className = "btn-success";
+        document.getElementById("cancel-btn").classList.remove("hidden");
+
+        // Прокрутка вверх к форме
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetForm() {
+        document.getElementById("note-title").value = "";
+        document.getElementById("note-content").value = "";
+        document.getElementById("edit-note-id").value = "";
+
+        document.getElementById("save-btn").innerText = "Добавить";
+        document.getElementById("save-btn").className = "btn-primary";
+        document.getElementById("cancel-btn").classList.add("hidden");
+    }
+
+    async function deleteNote(id) {
+        if (!confirm("Удалить эту заметку?")) return;
+
+        const token = localStorage.getItem("token");
+        const res = await fetch(`${API_URL}/notes/${id}`, {
+            method: "DELETE",
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+            loadNotes();
+            showMessage("Заметка удалена", "success");
+        } else {
+            showMessage("Не удалось удалить заметку");
+        }
+    }
+</script>
 </body>
 </html>
